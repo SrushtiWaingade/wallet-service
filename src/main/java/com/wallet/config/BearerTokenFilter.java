@@ -26,9 +26,12 @@ public class BearerTokenFilter extends OncePerRequestFilter {
 
     private static final String PREFIX = "Bearer ";
 
+    // Health probes and metric scrapers cannot present a token: Docker's
+    // HEALTHCHECK, the host's readiness probe and Prometheus all call these.
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return request.getRequestURI().startsWith("/actuator");
+        String path = request.getRequestURI();
+        return path.startsWith("/actuator") || path.equals("/metrics");
     }
 
     @Override

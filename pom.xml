@@ -55,6 +55,12 @@
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
 
+		<!-- Boot 4 keeps the metrics endpoints and the Prometheus scrape
+             autoconfiguration here; the registry alone is not enough. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-micrometer-metrics</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>io.micrometer</groupId>
 			<artifactId>micrometer-registry-prometheus</artifactId>

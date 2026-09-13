@@ -1,5 +1,6 @@
 package com.wallet.repository;
 
+import com.wallet.config.DomainMetrics;
 import com.wallet.entity.Wallet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,9 +26,11 @@ public class WalletRepository {
                     rs.getLong("balance_paise"));
 
     private final JdbcClient db;
+    private final DomainMetrics metrics;
 
-    WalletRepository(JdbcClient db) {
+    WalletRepository(JdbcClient db, DomainMetrics metrics) {
         this.db = db;
+        this.metrics = metrics;
     }
 
     // Concurrent callers for the same user_id must end up with one wallet. The
@@ -57,6 +60,7 @@ public class WalletRepository {
                         .addKeyValue("user_id", userId)
                         .addKeyValue("opening_balance_paise", OPENING_BALANCE_PAISE)
                         .log();
+                metrics.walletCreated();
                 return new Wallet(created.get(), userId, OPENING_BALANCE_PAISE);
             }
 

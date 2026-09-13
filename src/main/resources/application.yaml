@@ -21,11 +21,20 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
-
+        include:
+          - health
+          - info
+          - metrics
+          - prometheus
   endpoint:
     health:
       show-details: always
+  metrics:
+    distribution:
+      # Map keys containing dots need bracket notation in YAML, otherwise
+      # Spring reads them as nested maps and the binding silently does nothing.
+      percentiles-histogram:
+        "[http.server.requests]": true
 
 server:
   port: ${PORT:8080}

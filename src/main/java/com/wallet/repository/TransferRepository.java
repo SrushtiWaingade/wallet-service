@@ -1,5 +1,6 @@
 package com.wallet.repository;
 
+import com.wallet.config.DomainMetrics;
 import com.wallet.entity.Transfer;
 import com.wallet.entity.TransferResult;
 import com.wallet.entity.TransferStatus;
@@ -33,9 +34,11 @@ public class TransferRepository {
             "id, idempotency_key, request_hash, from_wallet_id, to_wallet_id, amount_paise, status";
 
     private final JdbcClient db;
+    private final DomainMetrics metrics;
 
-    TransferRepository(JdbcClient db) {
+    TransferRepository(JdbcClient db, DomainMetrics metrics) {
         this.db = db;
+        this.metrics = metrics;
     }
 
     // One transaction covers the idempotency claim and the money movement, so a
@@ -76,6 +79,7 @@ public class TransferRepository {
                 .addKeyValue("to_wallet_id", toWalletId)
                 .addKeyValue("amount_paise", amountPaise)
                 .log();
+        metrics.transferCreated();
 
         lockBothWallets(fromWalletId, toWalletId);
 
@@ -98,6 +102,7 @@ public class TransferRepository {
                     .addKeyValue("amount_paise", amountPaise)
                     .addKeyValue("reason", "insufficient_funds")
                     .log();
+            metrics.transferDeclined();
             return new TransferResult(finish(transferId, TransferStatus.DECLINED_INSUFFICIENT_FUNDS), false);
         }
 
@@ -124,6 +129,7 @@ public class TransferRepository {
                 .addKeyValue("to_wallet_id", toWalletId)
                 .addKeyValue("amount_paise", amountPaise)
                 .log();
+        metrics.transferCompleted();
 
         return new TransferResult(finish(transferId, TransferStatus.COMPLETED), false);
     }
@@ -165,6 +171,7 @@ public class TransferRepository {
                     .addKeyValue("idempotency_key", idempotencyKey)
                     .addKeyValue("transfer_id", existing.id())
                     .log();
+            metrics.transferConflicted();
             throw new IdempotencyConflictException(idempotencyKey);
         }
 
@@ -174,6 +181,7 @@ public class TransferRepository {
                 .addKeyValue("transfer_id", existing.id())
                 .addKeyValue("status", existing.status())
                 .log();
+        metrics.transferReplayed();
         return new TransferResult(existing, true);
     }
 
