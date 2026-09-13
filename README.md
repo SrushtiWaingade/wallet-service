@@ -1,61 +1,57 @@
 # Wallet & P2P Transfer
 
-A wallet service with peer-to-peer transfers. Money is integer paise end to end —
-`BIGINT` in the database, `long` in Java, no floats and no rupee decimals anywhere
-in the money path.
+A wallet service with peer-to-peer transfers. Money is always integer paise —
+`BIGINT` in the database, `long` in Java. No floats and no rupee decimals
+anywhere money is handled.
 
 | | |
 |---|---|
-| Live API | `https://TODO.onrender.com` |
-| Logs | `TODO` |
-| Metrics | `https://TODO.onrender.com/metrics` |
-| Design write-up | [DESIGN.md](DESIGN.md) |
+| Live API | `https://wallet-service-xvzc.onrender.com` |
+| Logs | [Screen recording of logs streaming during a burst](https://www.loom.com/share/a28b8fb05ec0493b9ac7c6b3be466b21) |
+| Metrics | `https://wallet-service-xvzc.onrender.com/metrics` |
+| Design notes | [DESIGN.md](DESIGN.md) |
 
-The service is kept awake by an uptime ping, so the first request should not
-cold-start. If it does, give it 60 seconds and retry.
+An uptime ping keeps the service awake, so the first request should be quick. If
+it isn't, wait 60 seconds and try again.
 
-## The invariants
+## What the service guarantees
 
-These are the properties the service exists to hold. Each is enforced in
-Postgres rather than in application code, so they survive multiple instances,
-not just multiple threads.
+All four are enforced by the database, not by Java code. That means they still
+hold if the service runs on more than one machine.
 
-1. **Conservation.** The sum of all balances never changes across a transfer.
-   Every movement writes two ledger rows summing to zero, so this is checkable
-   rather than merely claimed: `SELECT sum(delta_paise) FROM ledger_entries` is
-   always `0`.
-2. **No overdraft.** A balance never goes negative. The debit is a conditional
-   `UPDATE ... WHERE balance_paise >= :amount`; zero rows affected means declined,
-   with nothing partially applied.
-3. **Exactly-once transfer.** Re-sending an `idempotency_key` applies the transfer
-   once and returns the original response. The same key with a different body is
-   a `409`.
-4. **Race-free get-or-create.** Concurrent `POST /wallets` for one user yield one
-   wallet, via `INSERT ... ON CONFLICT (user_id) DO NOTHING`.
+1. **Money is never created or destroyed.** Every movement writes two ledger rows
+   that add up to zero, so you can check it: `SELECT sum(delta_paise) FROM
+   ledger_entries` is always `0`.
+2. **A balance never goes negative.** The debit is one conditional `UPDATE`. If it
+   changes zero rows, the transfer is declined and nothing moved.
+3. **A transfer happens once.** Sending the same `idempotency_key` again returns
+   the original response. The same key with a different body is a `409`.
+4. **One user, one wallet.** Simultaneous `POST /wallets` for the same user give
+   back one wallet, using `INSERT ... ON CONFLICT (user_id) DO NOTHING`.
 
-## Quick start
+## Running it
 
-Requires Docker. Nothing else — no local Java or Postgres.
+You need Docker. Nothing else — no Java, no Postgres.
 
 ```bash
 docker compose up --build
 ```
 
-That starts Postgres and the app, waits for the database to be ready, runs the
-Flyway migration and serves on `http://localhost:8080`.
+This starts Postgres, waits for it to be ready, runs the migration, and serves on
+`http://localhost:8080`.
 
 ```bash
-docker compose down -v      # stop and wipe the database
-docker compose logs -f app  # follow the JSON logs
+docker compose down -v      # stop and delete the database
+docker compose logs -f app  # watch the logs
 ```
 
 ## API
 
-Auth is a bearer token that **is** the user id — `Bearer alice` means you are
-`alice`. Deliberately trivial; see [DESIGN.md](DESIGN.md).
+The bearer token **is** the user id. `Bearer alice` means you are `alice`. This is
+deliberately simple — see [DESIGN.md](DESIGN.md).
 
-New wallets open with ₹1,000 (100000 paise), moved from a treasury wallet rather
-than conjured, so conservation holds even as wallets are created.
+New wallets start with ₹1,000 (100000 paise). That money is moved out of a
+treasury wallet, not created, so the total never changes.
 
 ### Create or fetch your wallet
 
@@ -67,15 +63,15 @@ curl -X POST http://localhost:8080/wallets \
 {"id":"ea771c18-...","user_id":"alice","balance_paise":100000}
 ```
 
-Idempotent by nature: calling it again returns the same wallet.
+Call it again and you get the same wallet back.
 
-### Read a balance
+### Check a balance
 
 ```bash
 curl http://localhost:8080/wallets/{id} -H 'Authorization: Bearer alice'
 ```
 
-### Transfer
+### Send money
 
 ```bash
 curl -X POST http://localhost:8080/transfers \
@@ -93,34 +89,34 @@ curl -X POST http://localhost:8080/transfers \
  "amount_paise":25000,"status":"COMPLETED"}
 ```
 
-The caller must own the `from` wallet.
+You must own the `from` wallet.
 
-### Transfer status
+### Check a transfer
 
 ```bash
 curl http://localhost:8080/transfers/{id} -H 'Authorization: Bearer alice'
 ```
 
-### Responses
+### What the status codes mean
 
 | Code | Meaning |
 |---|---|
-| `200` | applied, or an idempotent replay of the original result |
-| `422` | declined — insufficient funds. Nothing moved; the key is spent, so a retry replays the decline |
-| `409` | idempotency key reused with a different body |
-| `403` | caller does not own the `from` wallet |
-| `404` | wallet or transfer not found |
-| `400` | non-positive amount, self-transfer, blank key, malformed body |
-| `401` | missing or malformed bearer token |
+| `200` | Done — or a repeat of a transfer already done, returning the original result |
+| `422` | Declined, not enough money. Nothing moved. Retrying with the same key returns the same decline |
+| `409` | This idempotency key was already used with a different body |
+| `403` | You don't own the `from` wallet |
+| `404` | Wallet or transfer not found |
+| `400` | Amount is zero or negative, sending to yourself, blank key, or bad JSON |
+| `401` | Missing or malformed bearer token |
 
-## Reproducing the invariants
+## Checking the guarantees yourself
 
-One command, asserting only through the public API, so it runs unchanged against
-a deployment you have no shell access to.
+One command. It only uses the public API, so it works against the deployed
+service too.
 
 ```bash
-./burst.sh                                   # against localhost:8080
-./burst.sh https://TODO.onrender.com         # against the deployment
+./burst.sh                                            # localhost
+./burst.sh https://wallet-service-xvzc.onrender.com   # the live service
 ```
 
 ```
@@ -141,14 +137,17 @@ Gate 3 - conservation: 200 concurrent transfers over 4 wallets, both directions
   PASS  total conserved across 200 transfers (400000 paise, unchanged)
 ```
 
-Exit code is non-zero if any assertion fails. Gate 3 includes reciprocal A→B and
-B→A pairs, which is the case that deadlocks without a deterministic lock order.
+It exits non-zero if anything fails. Gate 3 deliberately sends A→B and B→A at the
+same time, which is the case that deadlocks if wallets aren't locked in a fixed
+order.
 
-Turn the dials for a slower host:
+You can turn it up or down:
 
 ```bash
-CONCURRENCY=20 STORM=20 TRANSFERS=50 ./burst.sh https://TODO.onrender.com
+CONCURRENCY=100 STORM=50 TRANSFERS=500 ./burst.sh https://wallet-service-xvzc.onrender.com
 ```
+
+500 transfers against the live service passes in about 34 seconds.
 
 ## Tests
 
@@ -156,25 +155,26 @@ CONCURRENCY=20 STORM=20 TRANSFERS=50 ./burst.sh https://TODO.onrender.com
 ./mvnw test
 ```
 
-Requires Docker. Tests start their own throwaway Postgres via Testcontainers, so
-they never touch a real database. Five of the six assert the invariants directly
-under concurrency, including the A→B/B→A deadlock case.
+You need Docker. The tests start their own temporary Postgres using
+Testcontainers, so they never touch a real database. Five of the six check the
+guarantees under real concurrency, including the A→B/B→A deadlock case.
 
-## Observability
+## Logs and metrics
 
-**Logs** are structured JSON (ECS), one line per event, with a `correlationId`
-from the `X-Request-Id` header or generated per request. Domain events:
-`wallet_created`, `transfer_created`, `transfer_completed`, `transfer_declined`,
-`idempotent_replay`, `idempotency_conflict`.
+Logs are JSON, one line per event. Every line has a `correlationId`, taken from
+the `X-Request-Id` header if you send one, otherwise generated.
 
-Tracing a single declined transfer:
+Events: `wallet_created`, `transfer_created`, `transfer_completed`,
+`transfer_declined`, `idempotent_replay`, `idempotency_conflict`.
+
+Following one declined transfer:
 
 ```bash
 docker compose logs app | grep transfer_declined \
   | jq -r '[.correlationId, .event, .amount_paise] | @tsv'
 ```
 
-**Metrics** at `/metrics` (and `/actuator/prometheus`).
+Metrics are at `/metrics` (and `/actuator/prometheus`):
 
 ```
 wallet_transfers_total
@@ -185,9 +185,7 @@ wallet_transfers_conflicted_total
 wallet_wallets_total
 ```
 
-Plus request rate, error rate by `outcome`, and a latency histogram. p99 is
-computed from buckets rather than exported as a client-side quantile, because
-quantiles cannot be aggregated across instances:
+Plus request rate, error rate, and a latency histogram. To get p99:
 
 ```promql
 histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{uri="/transfers"}[5m]))
@@ -195,21 +193,21 @@ histogram_quantile(0.99, rate(http_server_requests_seconds_bucket{uri="/transfer
 
 ## Deploying
 
-The image takes all configuration from the environment, so the same artefact runs
-on a laptop, in compose, and in production:
+All configuration comes from environment variables, so the same image runs on a
+laptop, in Docker Compose, and in production without changes.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `JDBC_URL` | `jdbc:postgresql://localhost:5432/wallet` | needs `?sslmode=require` on managed Postgres |
+| `JDBC_URL` | `jdbc:postgresql://localhost:5432/wallet` | add `?sslmode=require` for hosted Postgres |
 | `DB_USER` | `wallet` | |
 | `DB_PASSWORD` | `wallet` | |
-| `DB_POOL_SIZE` | `20` | lower it to fit a managed tier's connection cap |
-| `PORT` | `8080` | injected by most hosts |
-| `LOG_FORMAT` | `ecs` | set empty for human-readable local logs |
+| `DB_POOL_SIZE` | `20` | lower it if your database limits connections |
+| `PORT` | `8080` | most hosts set this for you |
+| `LOG_FORMAT` | `ecs` | set it to empty for readable logs while developing |
 
-Deployed on Render's free tier from the `Dockerfile`, against Neon free Postgres,
-both in Singapore so the app-to-database round trip stays around a millisecond.
-Total cost ₹0; neither requires a card.
+Running on Render's free tier, built from the `Dockerfile`, with Neon free
+Postgres. Both are in Singapore so the app and database are about a millisecond
+apart. Total cost ₹0, and neither needed a card.
 
-Credentials only ever arrive as environment variables. The defaults above are
-throwaway local values, which is why this repo can be public.
+Passwords only ever arrive as environment variables. The defaults above are
+throwaway local values, which is why this repository can be public.
