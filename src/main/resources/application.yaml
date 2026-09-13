@@ -6,7 +6,7 @@ spring:
     property-naming-strategy: SNAKE_CASE
 
   datasource:
-    url: ${JDBC_URL:jdbc:postgresql://localhost:5432/wallet}
+    url: "${JDBC_URL:jdbc:postgresql://localhost:5432/wallet}"
     username: ${DB_USER:wallet}
     password: ${DB_PASSWORD:wallet}
     hikari:
