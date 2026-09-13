@@ -23,6 +23,11 @@ public class ApiExceptionHandler {
         return error(HttpStatus.NOT_FOUND, e.getMessage());
     }
 
+    @ExceptionHandler(TransferNotFoundException.class)
+    ResponseEntity<Map<String, String>> notFound(TransferNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
     @ExceptionHandler(WalletNotOwnedException.class)
     ResponseEntity<Map<String, String>> forbidden(WalletNotOwnedException e) {
         return error(HttpStatus.FORBIDDEN, e.getMessage());

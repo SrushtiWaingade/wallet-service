@@ -2,15 +2,14 @@ package com.wallet.controller;
 
 import com.wallet.config.BearerTokenFilter;
 import com.wallet.dto.WalletResponse;
+import com.wallet.exception.WalletNotFoundException;
 import com.wallet.repository.WalletRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.UUID;
 
@@ -36,6 +35,6 @@ public class WalletController {
     public WalletResponse get(@PathVariable UUID id) {
         return wallets.findById(id)
                 .map(WalletResponse::of)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Wallet not found"));
+                .orElseThrow(() -> new WalletNotFoundException(id));
     }
 }

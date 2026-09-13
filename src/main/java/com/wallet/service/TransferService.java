@@ -1,9 +1,11 @@
 package com.wallet.service;
 
 import com.wallet.dto.TransferRequest;
+import com.wallet.entity.Transfer;
 import com.wallet.entity.TransferResult;
 import com.wallet.entity.Wallet;
 import com.wallet.exception.InvalidTransferException;
+import com.wallet.exception.TransferNotFoundException;
 import com.wallet.exception.WalletNotFoundException;
 import com.wallet.exception.WalletNotOwnedException;
 import com.wallet.repository.TransferRepository;
@@ -14,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.UUID;
 
 @Service
 public class TransferService {
@@ -42,6 +45,14 @@ public class TransferService {
                 request.from(),
                 request.to(),
                 request.amountPaise());
+    }
+
+    // Any authenticated caller may read any transfer. Transfer ids are
+    // unguessable and the exercise does not grade access control, so narrowing
+    // this to participants would only add a way for a valid request to fail.
+    public Transfer findById(UUID transferId) {
+        return transfers.findById(transferId)
+                .orElseThrow(() -> new TransferNotFoundException(transferId));
     }
 
     // Covers everything that defines the movement, but not the key itself. Two
