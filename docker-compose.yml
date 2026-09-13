@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: wallet
+      POSTGRES_PASSWORD: wallet
+      POSTGRES_DB: wallet
+    volumes:
+      - wallet-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wallet -d wallet"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    # Waits for pg_isready, not merely for the container to exist. Flyway runs
+    # during startup, so an app that races ahead of Postgres dies on boot.
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Inside the compose network the database host is the service name, not
+      # localhost. This is the only thing that changes between laptop, compose
+      # and the deployed host.
+      JDBC_URL: jdbc:postgresql://postgres:5432/wallet
+      DB_USER: wallet
+      DB_PASSWORD: wallet
+      DB_POOL_SIZE: 20
+    ports:
+      - "8080:8080"
+
+# Postgres is deliberately not published to the host: nothing outside the
+# compose network needs it, and binding 5432 would collide with any Postgres
+# already running on the reviewer's machine.
+volumes:
+  wallet-data:
