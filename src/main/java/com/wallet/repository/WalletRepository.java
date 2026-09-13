@@ -1,6 +1,8 @@
 package com.wallet.repository;
 
 import com.wallet.entity.Wallet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -11,6 +13,8 @@ import java.util.UUID;
 
 @Repository
 public class WalletRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(WalletRepository.class);
 
     public static final UUID TREASURY_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     public static final long OPENING_BALANCE_PAISE = 100_000L;
@@ -47,6 +51,12 @@ public class WalletRepository {
                     .optional();
             if (created.isPresent()) {
                 fundFromTreasury(created.get());
+                log.atInfo().setMessage("wallet created")
+                        .addKeyValue("event", "wallet_created")
+                        .addKeyValue("wallet_id", created.get())
+                        .addKeyValue("user_id", userId)
+                        .addKeyValue("opening_balance_paise", OPENING_BALANCE_PAISE)
+                        .log();
                 return new Wallet(created.get(), userId, OPENING_BALANCE_PAISE);
             }
 

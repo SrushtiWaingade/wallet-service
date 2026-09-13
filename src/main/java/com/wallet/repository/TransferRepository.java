@@ -5,6 +5,8 @@ import com.wallet.entity.TransferResult;
 import com.wallet.entity.TransferStatus;
 import com.wallet.exception.IdempotencyConflictException;
 import com.wallet.exception.WalletNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -15,6 +17,8 @@ import java.util.UUID;
 
 @Repository
 public class TransferRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(TransferRepository.class);
 
     private static final RowMapper<Transfer> MAPPER = (rs, rowNum) ->
             new Transfer(rs.getObject("id", UUID.class),
@@ -65,6 +69,14 @@ public class TransferRepository {
         }
 
         UUID transferId = claimed.get();
+        log.atInfo().setMessage("transfer created")
+                .addKeyValue("event", "transfer_created")
+                .addKeyValue("transfer_id", transferId)
+                .addKeyValue("from_wallet_id", fromWalletId)
+                .addKeyValue("to_wallet_id", toWalletId)
+                .addKeyValue("amount_paise", amountPaise)
+                .log();
+
         lockBothWallets(fromWalletId, toWalletId);
 
         int debited = db.sql("""
@@ -79,6 +91,13 @@ public class TransferRepository {
         // because the debit is a single conditional statement rather than a
         // read followed by a write.
         if (debited == 0) {
+            log.atWarn().setMessage("transfer declined for insufficient funds")
+                    .addKeyValue("event", "transfer_declined")
+                    .addKeyValue("transfer_id", transferId)
+                    .addKeyValue("from_wallet_id", fromWalletId)
+                    .addKeyValue("amount_paise", amountPaise)
+                    .addKeyValue("reason", "insufficient_funds")
+                    .log();
             return new TransferResult(finish(transferId, TransferStatus.DECLINED_INSUFFICIENT_FUNDS), false);
         }
 
@@ -97,6 +116,14 @@ public class TransferRepository {
                 .param("to", toWalletId)
                 .param("credit", amountPaise)
                 .update();
+
+        log.atInfo().setMessage("transfer debited and credited")
+                .addKeyValue("event", "transfer_completed")
+                .addKeyValue("transfer_id", transferId)
+                .addKeyValue("from_wallet_id", fromWalletId)
+                .addKeyValue("to_wallet_id", toWalletId)
+                .addKeyValue("amount_paise", amountPaise)
+                .log();
 
         return new TransferResult(finish(transferId, TransferStatus.COMPLETED), false);
     }
@@ -133,8 +160,20 @@ public class TransferRepository {
                         "Idempotency key " + idempotencyKey + " conflicted but no transfer was found"));
 
         if (!existing.requestHash().equals(requestHash)) {
+            log.atWarn().setMessage("idempotency key reused with a different body")
+                    .addKeyValue("event", "idempotency_conflict")
+                    .addKeyValue("idempotency_key", idempotencyKey)
+                    .addKeyValue("transfer_id", existing.id())
+                    .log();
             throw new IdempotencyConflictException(idempotencyKey);
         }
+
+        log.atInfo().setMessage("idempotent replay")
+                .addKeyValue("event", "idempotent_replay")
+                .addKeyValue("idempotency_key", idempotencyKey)
+                .addKeyValue("transfer_id", existing.id())
+                .addKeyValue("status", existing.status())
+                .log();
         return new TransferResult(existing, true);
     }
 

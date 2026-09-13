@@ -4,6 +4,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,6 +19,7 @@ import java.io.IOException;
 // sophistication, so anything stronger would be unused complexity. Everything
 // downstream only needs a caller identity, not a proof of one.
 @Component
+@Order(Ordered.HIGHEST_PRECEDENCE + 10)
 public class BearerTokenFilter extends OncePerRequestFilter {
 
     public static final String CALLER_USER = "callerUserId";
