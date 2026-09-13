@@ -112,8 +112,15 @@ public class TransferRepository {
         lockWallet(second);
     }
 
+    // FOR NO KEY UPDATE, not FOR UPDATE. Inserting the transfers row above takes
+    // a KEY SHARE lock on both referenced wallets to satisfy the foreign keys,
+    // and it takes them in column order rather than sorted order. FOR UPDATE
+    // conflicts with KEY SHARE, so two opposing transfers would each hold a
+    // share lock the other needs to upgrade past - a deadlock that no amount of
+    // ordering on our side can prevent. FOR NO KEY UPDATE is the lock an UPDATE
+    // of a non-key column takes anyway, and it does not conflict with KEY SHARE.
     private void lockWallet(UUID walletId) {
-        db.sql("SELECT 1 FROM wallets WHERE id = :id FOR UPDATE")
+        db.sql("SELECT 1 FROM wallets WHERE id = :id FOR NO KEY UPDATE")
                 .param("id", walletId)
                 .query((rs, rowNum) -> rs.getInt(1))
                 .optional()
