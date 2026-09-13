@@ -41,7 +41,7 @@ server:
 
 logging:
   pattern:
-    level: %5p [%X{correlationId:-no-correlation-id}]
+    level: "%5p [%X{correlationId:-no-correlation-id}]"
   structured:
     format:
       console: ${LOG_FORMAT:ecs}
